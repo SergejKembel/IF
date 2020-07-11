@@ -5,10 +5,9 @@ import com.github.stefvanschie.inventoryframework.GuiItem;
 import com.github.stefvanschie.inventoryframework.exception.XMLLoadException;
 import com.github.stefvanschie.inventoryframework.exception.XMLReflectionException;
 import com.github.stefvanschie.inventoryframework.util.SkullUtil;
+import com.github.stefvanschie.inventoryframework.util.UUIDTagType;
 import com.github.stefvanschie.inventoryframework.util.XMLUtil;
 import com.google.common.primitives.Primitives;
-import me.ialistannen.mininbt.ItemNBTUtil;
-import me.ialistannen.mininbt.NBTWrappers;
 import org.apache.commons.lang3.reflect.MethodUtils;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -20,6 +19,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -32,6 +32,8 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The base class for all panes.
@@ -60,10 +62,10 @@ public abstract class Pane {
     private Priority priority;
 
     /**
-     * The consumer that will be called once a players clicks in the gui
+     * The consumer that will be called once a players clicks in this pane
      */
     @Nullable
-    protected Consumer<InventoryClickEvent> onClick;
+    private Consumer<InventoryClickEvent> onClick;
 
     /**
      * A map containing the mappings for properties for items
@@ -501,17 +503,19 @@ public abstract class Pane {
     @Nullable
     @Contract(pure = true)
     protected static <T extends GuiItem> T findMatchingItem(@NotNull Collection<T> items, @NotNull ItemStack item) {
-        return items.stream().filter(guiItem -> {
-            NBTWrappers.NBTTagCompound tag = ItemNBTUtil.getTag(item);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return null;
+        }
 
-            if (tag == null) {
-                return false;
-            }
+        UUID uuid = meta.getPersistentDataContainer().get(GuiItem.KEY_UUID, UUIDTagType.INSTANCE);
+        if (uuid == null) {
+            return null;
+        }
 
-            String stringUUID = tag.getString("IF-uuid");
-
-            return stringUUID != null && guiItem.getUUID().equals(UUID.fromString(stringUUID));
-        }).findAny().orElse(null);
+        return items.stream()
+                .filter(guiItem -> guiItem.getUUID().equals(uuid))
+                .findAny().orElse(null);
     }
 
     /**
@@ -554,7 +558,7 @@ public abstract class Pane {
     public abstract void clear();
 
     /**
-     * Set the consumer that should be called whenever this gui is clicked in.
+     * Set the consumer that should be called whenever this pane is clicked in.
      *
      * @param onClick the consumer that gets called
      * @since 0.4.0
@@ -562,16 +566,28 @@ public abstract class Pane {
     public void setOnClick(@Nullable Consumer<InventoryClickEvent> onClick) {
         this.onClick = onClick;
     }
-
+    
     /**
-     * Set the consumer that should be called whenever this gui is clicked in.
+     * Calls the consumer (if it's not null) that was specified using {@link #setOnClick(Consumer)},
+     * so the consumer that should be called whenever this pane is clicked in.
+     * Catches and logs all exceptions the consumer might throw.
      *
-     * @param onLocalClick the consumer that gets called
-     * @deprecated see {@link #setOnClick(Consumer)}
+     * @param event the event to handle
+     * @since 0.6.0
      */
-    @Deprecated
-    public void setOnLocalClick(@Nullable Consumer<InventoryClickEvent> onLocalClick) {
-        this.onClick = onLocalClick;
+    protected void callOnClick(@NotNull InventoryClickEvent event) {
+        if (onClick == null) {
+            return;
+        }
+    
+        try {
+            onClick.accept(event);
+        } catch (Throwable t) {
+            Logger logger = JavaPlugin.getProvidingPlugin(getClass()).getLogger();
+            logger.log(Level.SEVERE, "Exception while handling click event in inventory '"
+                    + event.getView().getTitle() + "', slot=" + event.getSlot() + ", for "
+                    + getClass().getSimpleName() + ", x=" + x + ", y=" + y + ", length=" + length + ", height=" + height, t);
+        }
     }
 
     /**
@@ -590,19 +606,6 @@ public abstract class Pane {
         }
     
         PROPERTY_MAPPINGS.put(attributeName, function);
-    }
-
-    /**
-     * Returns the property mappings used when loading properties from an XML file.
-     *
-     * @deprecated use {@link Gui#registerProperty(String, Function)} instead
-     * @return the property mappings
-     */
-    @NotNull
-    @Contract(pure = true)
-    @Deprecated
-    public static Map<String, Function<String, Object>> getPropertyMappings() {
-        return PROPERTY_MAPPINGS;
     }
 
     /**

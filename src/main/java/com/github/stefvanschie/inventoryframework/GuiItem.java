@@ -1,15 +1,21 @@
 package com.github.stefvanschie.inventoryframework;
 
-import me.ialistannen.mininbt.ItemNBTUtil;
-import me.ialistannen.mininbt.NBTWrappers;
+import com.github.stefvanschie.inventoryframework.util.UUIDTagType;
+import org.bukkit.NamespacedKey;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * An item for in an inventory
@@ -17,9 +23,15 @@ import java.util.function.Consumer;
 public class GuiItem {
 
     /**
+     * The {@link NamespacedKey} that specifies the location of the (internal) {@link UUID} in {@link PersistentDataContainer}s.
+     * The {@link PersistentDataType} that should be used is {@link UUIDTagType}.
+     */
+    public static final NamespacedKey KEY_UUID = new NamespacedKey(JavaPlugin.getProvidingPlugin(GuiItem.class), "IF-uuid");
+
+    /**
      * An action for the inventory
      */
-    @NotNull
+    @Nullable
     private final Consumer<InventoryClickEvent> action;
 
     /**
@@ -46,14 +58,17 @@ public class GuiItem {
      * @param action the action called whenever an interaction with this item happens
      */
     public GuiItem(@NotNull ItemStack item, @Nullable Consumer<InventoryClickEvent> action) {
-        this.action = action == null ? event -> {} : action;
+        this.action = action;
         this.visible = true;
 
-        NBTWrappers.NBTTagCompound compound = ItemNBTUtil.getTag(item);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            throw new IllegalArgumentException("item must be able to have ItemMeta (it mustn't be AIR)");
+        }
 
-        compound.setString("IF-uuid", uuid.toString());
-
-        this.item = ItemNBTUtil.setNBTTag(compound, item);
+        meta.getPersistentDataContainer().set(KEY_UUID, UUIDTagType.INSTANCE, uuid);
+        item.setItemMeta(meta);
+        this.item = item;
     }
 
     /**
@@ -66,14 +81,25 @@ public class GuiItem {
     }
 
     /**
-     * Returns the action for this item
+     * Calls the handler of the {@link InventoryClickEvent}
+     * if such a handler was specified in the constructor.
+     * Catches and logs all exceptions the handler might throw.
      *
-     * @return the action called when clicked on this item
+     * @param event the event to handle
+     * @since 0.6.0
      */
-    @NotNull
-    @Contract(pure = true)
-    public Consumer<InventoryClickEvent> getAction() {
-        return action;
+    public void callAction(@NotNull InventoryClickEvent event) {
+        if (action == null) {
+            return;
+        }
+
+        try {
+            action.accept(event);
+        } catch (Throwable t) {
+            Logger logger = JavaPlugin.getProvidingPlugin(getClass()).getLogger();
+            logger.log(Level.SEVERE, "Exception while handling click event in inventory '"
+                    + event.getView().getTitle() + "', slot=" + event.getSlot() + ", item=" + item.getType(), t);
+        }
     }
 
     /**

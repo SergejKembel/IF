@@ -6,6 +6,7 @@ import com.github.stefvanschie.inventoryframework.exception.XMLLoadException;
 import com.github.stefvanschie.inventoryframework.util.GeometryUtil;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.Contract;
@@ -79,10 +80,17 @@ public class StaticPane extends Pane implements Flippable, Rotatable {
 			Map.Entry<Integer, Integer> coordinates = GeometryUtil.processClockwiseRotation(x, y, length, height,
 				rotation);
 
+			x = coordinates.getKey();
+			y = coordinates.getValue();
+
+			if (x < 0 || x >= length || y < 0 || y >= height) {
+			    return;
+            }
+
 			ItemStack item = entry.getValue().getItem();
 
-			int finalRow = getY() + coordinates.getValue() + paneOffsetY;
-			int finalColumn = getX() + coordinates.getKey() + paneOffsetX;
+			int finalRow = getY() + y + paneOffsetY;
+			int finalColumn = getX() + x + paneOffsetX;
 
 			if (finalRow >= gui.getRows()) {
 			    gui.setState(Gui.State.BOTTOM);
@@ -129,11 +137,12 @@ public class StaticPane extends Pane implements Flippable, Rotatable {
 		int height = Math.min(this.height, maxHeight);
 
 		int slot = event.getSlot();
+        InventoryView view = event.getView();
+        Inventory inventory = view.getInventory(event.getRawSlot());
 
-		int x, y;
+        int x, y;
 
-        //noinspection ConstantConditions
-        if (Gui.getInventory(event.getView(), event.getRawSlot()).equals(event.getView().getBottomInventory())) {
+        if (inventory != null && inventory.equals(view.getBottomInventory())) {
             x = (slot % 9) - getX() - paneOffsetX;
             y = ((slot / 9) + gui.getRows() - 1) - getY() - paneOffsetY;
 
@@ -149,8 +158,7 @@ public class StaticPane extends Pane implements Flippable, Rotatable {
 		if (x < 0 || x >= length || y < 0 || y >= height)
 			return false;
 
-        if (onClick != null)
-            onClick.accept(event);
+		callOnClick(event);
 
         ItemStack itemStack = event.getCurrentItem();
 
@@ -164,7 +172,7 @@ public class StaticPane extends Pane implements Flippable, Rotatable {
             return false;
         }
 
-        clickedItem.getAction().accept(event);
+        clickedItem.callAction(event);
 
         return true;
 	}

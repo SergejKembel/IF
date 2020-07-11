@@ -8,6 +8,7 @@ import com.github.stefvanschie.inventoryframework.util.GeometryUtil;
 import org.bukkit.Material;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.Contract;
@@ -147,19 +148,24 @@ public class OutlinePane extends Pane implements Flippable, Orientable, Rotatabl
             Map.Entry<Integer, Integer> coordinates = GeometryUtil.processClockwiseRotation(newX, newY, length, height,
                     rotation);
 
-            int finalRow = getY() + coordinates.getValue() + paneOffsetY;
-            int finalColumn = getX() + coordinates.getKey() + paneOffsetX;
+            newX = coordinates.getKey();
+            newY = coordinates.getValue();
 
-            if (finalRow >= gui.getRows()) {
-                gui.setState(Gui.State.BOTTOM);
+            if (newX >= 0 || newX < length || newY >= 0 || newY < height) {
+                int finalRow = getY() + newY + paneOffsetY;
+                int finalColumn = getX() + newX + paneOffsetX;
 
-                if (finalRow == gui.getRows() + 3) {
-                    playerInventory.setItem(finalColumn, item.getItem());
+                if (finalRow >= gui.getRows()) {
+                    gui.setState(Gui.State.BOTTOM);
+
+                    if (finalRow == gui.getRows() + 3) {
+                        playerInventory.setItem(finalColumn, item.getItem());
+                    } else {
+                        playerInventory.setItem(((finalRow - gui.getRows()) + 1) * 9 + finalColumn, item.getItem());
+                    }
                 } else {
-                    playerInventory.setItem(((finalRow - gui.getRows()) + 1) * 9 + finalColumn, item.getItem());
+                    inventory.setItem(finalRow * 9 + finalColumn, item.getItem());
                 }
-            } else {
-                inventory.setItem(finalRow * 9 + finalColumn, item.getItem());
             }
 
             int gapCount = gap;
@@ -200,11 +206,12 @@ public class OutlinePane extends Pane implements Flippable, Orientable, Rotatabl
         int height = Math.min(this.height, maxHeight);
 
         int slot = event.getSlot();
+        InventoryView inventoryView = event.getView();
+        Inventory inventory = inventoryView.getInventory(event.getRawSlot());
 
         int x, y;
 
-        //noinspection ConstantConditions
-        if (Gui.getInventory(event.getView(), event.getRawSlot()).equals(event.getView().getBottomInventory())) {
+        if (inventory != null && inventory.equals(inventoryView.getBottomInventory())) {
             x = (slot % 9) - getX() - paneOffsetX;
             y = ((slot / 9) + gui.getRows() - 1) - getY() - paneOffsetY;
 
@@ -220,8 +227,7 @@ public class OutlinePane extends Pane implements Flippable, Orientable, Rotatabl
         if (x < 0 || x >= length || y < 0 || y >= height)
             return false;
 
-        if (onClick != null)
-            onClick.accept(event);
+        callOnClick(event);
 
         ItemStack itemStack = event.getCurrentItem();
 
@@ -235,7 +241,7 @@ public class OutlinePane extends Pane implements Flippable, Orientable, Rotatabl
             return false;
         }
 
-        item.getAction().accept(event);
+        item.callAction(event);
 
         return true;
     }
